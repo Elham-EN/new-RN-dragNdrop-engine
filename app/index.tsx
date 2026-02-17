@@ -1,15 +1,24 @@
-import { StyleSheet, Text, View } from "react-native";
+import TaskList from "@/components/TaskList";
+import { lists } from "@/data";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function Index() {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      <Text>Edit app/index.tsx to edit this screen.</Text>
+    <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
+      <Text style={styles.header}>Inbox Screen</Text>
+      <ScrollView>
+        {lists.map((taskList) => (
+          <TaskList
+            key={taskList.listId}
+            listId={taskList.listId}
+            listName={taskList.listName}
+            listIconLeft={taskList.listIcon}
+          />
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -17,7 +26,13 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: "#F8F8F8",
+  },
+  header: {
+    fontSize: 20,
+    fontWeight: "700",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: "#1C1C1E",
   },
 });
