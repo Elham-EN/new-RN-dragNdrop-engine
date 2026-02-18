@@ -6,6 +6,12 @@ interface TaskItemProps {
   description?: string;
 }
 
+/**
+ * TaskItemRow component displays a single task with title and description.
+ * Shows task metadata in a clean, readable format.
+ *
+ * @param task - The task object containing title and description
+ */
 export default function TaskItem({
   title,
   description,
