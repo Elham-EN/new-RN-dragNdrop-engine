@@ -123,17 +123,31 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
 
       if (sourceListId === targetListId) {
         // --- SAME-LIST REORDER ---
-        // Get the tasks for this list in their current order
+        // Get all tasks for this list in current order (includes the dragged item)
         const listTasks = updated
           .filter((t) => t.listId === sourceListId)
           .sort((a, b) => a.order - b.order);
+
+        // Find where the dragged item currently sits in the full sorted array
+        const draggedCurrentIndex = listTasks.findIndex(
+          (t) => t.taskId === sourceTaskId,
+        );
+
+        // targetIndex is in full-array terms (matches InsertionLine slotIndex 1:1).
+        // When we remove the dragged item and splice it back in, we need to
+        // adjust the splice position: if the dragged item was before the target
+        // slot, removing it shifts everything left by 1.
+        const spliceIndex =
+          draggedCurrentIndex < targetIndex
+            ? targetIndex - 1  // shift left after removal
+            : targetIndex;     // no shift needed
 
         // Pull the dragged task out
         const dragged = listTasks.find((t) => t.taskId === sourceTaskId)!;
         const rest = listTasks.filter((t) => t.taskId !== sourceTaskId);
 
-        // Insert at the new position
-        rest.splice(targetIndex, 0, dragged);
+        // Insert at the adjusted position
+        rest.splice(spliceIndex, 0, dragged);
 
         // Write fresh order values back into the updated array
         rest.forEach((task, i) => {

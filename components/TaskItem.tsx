@@ -91,13 +91,11 @@ export default function TaskItem({
       return;
     }
 
-    // Within the found list, determine the insertion index by comparing the
-    // finger Y to each item's midpoint (excluding the dragged item itself)
+    // Within the found list, determine the insertion slot by comparing the
+    // finger Y to each item's midpoint. Include the dragged item so that
+    // insertIndex maps 1:1 to the InsertionLine slotIndex values (0..N).
     const listItems = itemLayouts.value
-      .filter(
-        (item) =>
-          item.listId === foundListId && item.taskId !== draggedTaskId.value,
-      )
+      .filter((item) => item.listId === foundListId)
       .sort((a, b) => a.order - b.order);
 
     // Default: drop at the end of the list
