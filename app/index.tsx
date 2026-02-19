@@ -2,7 +2,7 @@
 // DragProvider wraps the scroll content so all children share the same drag state.
 import TaskList from "@/components/TaskList";
 import { DragProvider, useDragContext } from "@/context/DragContext";
-import { lists, tasks as initialTasks, TaskItem } from "@/data";
+import { tasks as initialTasks, lists, TaskItem } from "@/data";
 import * as React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -29,7 +29,7 @@ function DragGhost() {
   // To keep it visually centred on the finger, we offset left/top by
   // half the size reduction: e.g. if width shrinks by 30%, shift right
   // by 15% of the original width so the ghost stays under the finger.
-  const GHOST_SCALE = 0.7; // how small the ghost appears while dragging
+  const GHOST_SCALE = 0.35; // how small the ghost appears while dragging
 
   // Drives absolute position, size, and visibility of the floating ghost
   const ghostStyle = useAnimatedStyle(() => {
@@ -65,17 +65,23 @@ function DragGhost() {
   });
 
   // Feeds ghostTitle shared value into Animated.Text as an animatedProp
-  const titleAnimatedProps = useAnimatedProps(() => ({
-    text: ghostTitle.value,
-    // defaultValue prevents a flicker when the shared value first updates
-    defaultValue: "",
-  } as any));
+  const titleAnimatedProps = useAnimatedProps(
+    () =>
+      ({
+        text: ghostTitle.value,
+        // defaultValue prevents a flicker when the shared value first updates
+        defaultValue: "",
+      }) as any,
+  );
 
   // Feeds ghostDescription shared value into Animated.Text
-  const descriptionAnimatedProps = useAnimatedProps(() => ({
-    text: ghostDescription.value,
-    defaultValue: "",
-  } as any));
+  const descriptionAnimatedProps = useAnimatedProps(
+    () =>
+      ({
+        text: ghostDescription.value,
+        defaultValue: "",
+      }) as any,
+  );
 
   return (
     <Animated.View style={ghostStyle}>

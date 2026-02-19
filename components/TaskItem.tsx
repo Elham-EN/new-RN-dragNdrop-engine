@@ -1,9 +1,8 @@
 // TaskItem — a single draggable task row.
 // Wraps its content in a GestureDetector with a long-press pan gesture.
 // On pickup: positions the ghost, hides itself, disables scroll.
-// While dragging: moves the ghost, hit-tests the layout registry each frame,
-//   animates a gap in the target list to preview the drop position.
-// On drop: snaps ghost to slot, commits state via scheduleOnRN, cleans up.
+// While dragging: moves the ghost, hit-tests the layout registry each frame.
+// On drop: commits state via scheduleOnRN, cleans up.
 import { useDragContext } from "@/context/DragContext";
 import * as React from "react";
 import { StyleSheet, Text } from "react-native";
@@ -52,7 +51,7 @@ export default function TaskItem({
     ghostTitle,
     ghostDescription,
     activeDropListId,
-    activeDropIndex,
+    activeDropSlot,
     scrollEnabled,
     scrollViewRef,
     currentScrollY,
@@ -68,94 +67,105 @@ export default function TaskItem({
   const selfOpacity = useSharedValue(1);
 
   /**
-   * Hit-test: given the finger's absolute Y position, determine which list and
-   * which insertion slot the finger is over.
-   * Reads the layout registry shared values — runs entirely on the UI thread.
+   * Hit-test: determines which list and slot the finger is over.
+   *
+   * Key insight: the dragged item is hidden (opacity 0) but still occupies
+   * layout space. So items below it in the same list have their pageY pushed
+   * down by the dragged item's height. The hit-test excludes the dragged item
+   * from midpoint comparisons, but the remaining items' positions are "inflated"
+   * by that phantom gap. To compensate, we subtract the dragged item's height
+   * from the livePageY of every item that sits below the dragged item's
+   * original position in the same list. This makes the midpoints match the
+   * visual positions the user perceives (as if the dragged item disappeared).
    */
   function hitTest(fingerY: number) {
     "worklet";
 
-    // Group all item layouts by listId so we can derive each list's live boundary
-    // directly from its items — avoids depending on listLayouts which can be stale
-    // when a list grows after a drop (animated height bypasses onLayout).
+    // Scroll offset right now — used to correct stale pageY entries
+    const scrollNow = currentScrollY.value;
+
+    // All registered item layouts — pageY values may be stale if the list scrolled
     const allItems = itemLayouts.value;
 
-    // Build a map: listId → items sorted by pageY
-    // We need to check every known list to see if the finger is inside it.
-    // Collect the unique list IDs present in itemLayouts.
-    const seenListIds: string[] = [];
-    for (let i = 0; i < allItems.length; i++) {
-      const lid = allItems[i].listId;
-      if (!seenListIds.includes(lid)) {
-        seenListIds.push(lid);
-      }
+    // Helper: returns the live screen Y for an item by adjusting for scroll delta
+    function livePageY(item: {
+      pageY: number;
+      scrollYAtMeasure: number;
+    }): number {
+      "worklet";
+      // How much the scroll moved since this item was last measured
+      const scrollDelta = scrollNow - item.scrollYAtMeasure;
+      // Items move UP the screen as scroll increases — subtract the delta
+      return item.pageY - scrollDelta;
     }
 
-    // Also include lists from listLayouts that have no items yet (empty lists)
-    // so the finger can enter them for a drop.
-    for (let i = 0; i < listLayouts.value.length; i++) {
-      const lid = listLayouts.value[i].listId;
-      if (!seenListIds.includes(lid)) {
-        seenListIds.push(lid);
-      }
-    }
+    // Find the dragged item's layout so we can compensate for its phantom space
+    const draggedId = draggedTaskId.value;
+    const draggedFromList = draggedFromListId.value;
+    const draggedLayout = draggedId
+      ? allItems.find((item) => item.taskId === draggedId)
+      : null;
+    // The dragged item's live Y — items below this in the same list need adjustment
+    const draggedLiveY = draggedLayout ? livePageY(draggedLayout) : 0;
+    // Total space the dragged item occupies (height + marginBottom from styles)
+    const draggedSpace = draggedLayout ? draggedLayout.height + 6 : 0;
 
+    // Use listLayouts as the primary source for list boundary detection.
+    // This includes the full list container (header + items), so the finger
+    // can target a list even when hovering over its header or empty space.
     let foundListId: string | null = null;
 
-    for (let i = 0; i < seenListIds.length; i++) {
-      const lid = seenListIds[i];
-      const items = allItems
-        .filter((item) => item.listId === lid)
-        .sort((a, b) => a.pageY - b.pageY);
-
-      if (items.length > 0) {
-        // Derive list boundary from its items: top of first item to bottom of last
-        const listTop = items[0].pageY;
-        const lastItem = items[items.length - 1];
-        const listBottom = lastItem.pageY + lastItem.height;
-        if (fingerY >= listTop && fingerY <= listBottom) {
-          foundListId = lid;
-          break;
-        }
-      } else {
-        // Empty list — fall back to listLayouts boundary
-        const layout = listLayouts.value.find((l) => l.listId === lid);
-        if (
-          layout &&
-          fingerY >= layout.pageY &&
-          fingerY <= layout.pageY + layout.height
-        ) {
-          foundListId = lid;
-          break;
-        }
+    for (let i = 0; i < listLayouts.value.length; i++) {
+      const layout = listLayouts.value[i];
+      // Correct for scroll that happened since this list was measured
+      const layoutScrollDelta = scrollNow - layout.scrollYAtMeasure;
+      const layoutTop = layout.pageY - layoutScrollDelta;
+      const layoutBottom = layoutTop + layout.height;
+      if (fingerY >= layoutTop && fingerY <= layoutBottom) {
+        foundListId = layout.listId;
+        break;
       }
     }
 
     activeDropListId.value = foundListId;
 
     if (foundListId === null) {
-      // Finger is outside all lists — no valid drop target
-      activeDropIndex.value = -1;
+      // Finger is outside all lists — clear slot and bail
+      activeDropSlot.value = "";
       return;
     }
 
-    // Within the found list, determine the insertion slot by comparing the
-    // finger Y to each item's midpoint. Sort by pageY — always current,
-    // unlike the order field which can be stale between drops.
+    // Within the found list, find the insertion slot.
+    // Exclude the dragged item itself — inserting "before yourself" is a no-op.
     const listItems = allItems
-      .filter((item) => item.listId === foundListId)
-      .sort((a, b) => a.pageY - b.pageY);
+      .filter(
+        (item) => item.listId === foundListId && item.taskId !== draggedId,
+      )
+      .sort((a, b) => livePageY(a) - livePageY(b));
 
-    // Default: drop at the end of the list
-    let insertIndex = listItems.length;
+    // For same-list drags, items below the dragged item's original position
+    // need their midpoints shifted up by the dragged item's height+margin.
+    // This compensates for the phantom space the hidden dragged item occupies.
+    let slot = `end:${foundListId}`;
     for (let j = 0; j < listItems.length; j++) {
-      // If finger is above the midpoint of item j, insert before it
-      if (fingerY < listItems[j].pageY + listItems[j].height / 2) {
-        insertIndex = j;
+      let itemY = livePageY(listItems[j]);
+
+      // Shift items below the dragged item up to close the phantom gap
+      if (
+        draggedLayout &&
+        foundListId === draggedFromList &&
+        itemY > draggedLiveY
+      ) {
+        itemY -= draggedSpace;
+      }
+
+      const itemMidY = itemY + listItems[j].height / 2;
+      if (fingerY < itemMidY) {
+        slot = listItems[j].taskId;
         break;
       }
     }
-    activeDropIndex.value = insertIndex;
+    activeDropSlot.value = slot;
   }
 
   /**
@@ -182,7 +192,6 @@ export default function TaskItem({
     }
   }
 
-  // ─── Gap animation ──────────────────────────────────────────────────────────
   // ─── Gesture ────────────────────────────────────────────────────────────────
   const panGesture = Gesture.Pan()
     // Activate only after a 400ms hold — gives the ScrollView time to claim
@@ -224,8 +233,10 @@ export default function TaskItem({
       // Disable the ScrollView so it doesn't compete with the pan gesture
       scrollEnabled.value = false;
 
-      // Register the initial hit-test position
-      hitTest(ghostOriginY.value);
+      // Register the initial drop slot using the finger's screen position.
+      // absoluteY is not available in onStart, so use the ghost origin midpoint
+      // as an approximation — the finger is on the item at this moment.
+      hitTest(ghostOriginY.value + ghostHeight.value / 2);
     })
 
     .onUpdate((event) => {
@@ -234,7 +245,9 @@ export default function TaskItem({
       ghostX.value = ghostOriginX.value + event.translationX;
       ghostY.value = ghostOriginY.value + event.translationY;
 
-      // Re-run hit-test every frame to update activeDropListId and activeDropIndex
+      // Re-run hit-test every frame with the live finger position.
+      // absoluteY is always the current absolute screen Y of the finger —
+      // it matches pageY from measure() which is also in absolute screen space.
       hitTest(event.absoluteY);
 
       // Auto-scroll if the finger is near the top or bottom edge
@@ -244,34 +257,27 @@ export default function TaskItem({
     .onEnd(() => {
       "worklet";
       const targetListId = activeDropListId.value;
-      const targetIndex = activeDropIndex.value;
+      const targetSlot = activeDropSlot.value;
       const sourceTaskId = draggedTaskId.value;
       const sourceListId = draggedFromListId.value;
 
+      // Valid drop: we have a list target and a non-empty slot key
       if (
         targetListId !== null &&
-        targetIndex >= 0 &&
+        targetSlot !== "" &&
         sourceTaskId !== null &&
         sourceListId !== null
       ) {
-        // Valid drop — animate ghost to the target slot then commit state
-        // For simplicity, snap ghost back to origin position then fade out
-        // Snapshot itemLayouts now (before the animation completes) so commitDrop
-        // can sort by the same pageY values that hitTest used to compute targetIndex
-        const layoutsSnapshot = itemLayouts.value;
-        ghostY.value = withTiming(ghostOriginY.value, { duration: 150 }, () => {
-          "worklet";
-          isDragging.value = false;
-          // Pass the layout snapshot so commitDrop sorts by pageY, not stale order
-          scheduleOnRN(
-            commitDrop,
-            sourceTaskId,
-            sourceListId,
-            targetListId,
-            targetIndex,
-            layoutsSnapshot,
-          );
-        });
+        // Hide ghost immediately and commit the drop — React re-render will
+        // place the item in its new position with the restored opacity.
+        isDragging.value = false;
+        scheduleOnRN(
+          commitDrop,
+          sourceTaskId,
+          sourceListId,
+          targetListId,
+          targetSlot,
+        );
       } else {
         // Invalid drop — snap ghost back to where the drag started
         ghostX.value = withSpring(ghostOriginX.value);
@@ -286,7 +292,7 @@ export default function TaskItem({
 
       // Clear drop target indicators
       activeDropListId.value = null;
-      activeDropIndex.value = -1;
+      activeDropSlot.value = "";
     })
 
     .onFinalize(() => {
@@ -307,7 +313,6 @@ export default function TaskItem({
   // find it. Called on every layout change (mount, reorder, text wrap change).
   function handleLayout() {
     // scheduleOnUI runs on the UI thread where measure() is valid.
-    // Small delay via requestAnimationFrame lets the layout settle first.
     scheduleOnUI(() => {
       "worklet";
       // measure() must run on the UI thread — this worklet guarantees that
@@ -323,6 +328,9 @@ export default function TaskItem({
           pageY: m.pageY,
           height: m.height,
           order,
+          // Capture the current scroll offset so hitTest can correct for
+          // any scroll that happens between now and when the item is hit-tested
+          scrollYAtMeasure: currentScrollY.value,
         };
         if (existingIdx >= 0) {
           layouts[existingIdx] = entry;

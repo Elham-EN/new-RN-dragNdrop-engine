@@ -29,43 +29,38 @@ interface TaskListProps {
 
 // ─── InsertionLine ────────────────────────────────────────────────────────────
 // A thin blue horizontal rule that appears at the active drop slot.
-// slotIndex: the insertion index this line represents (0 = before first item,
-//   n = after last item). Visible only when this list is the drop target
-//   and activeDropIndex matches slotIndex.
+// Each line owns a slotKey: the taskId of the item directly below it,
+// or "end:<listId>" for the slot after the last item. This matches
+// exactly what hitTest writes into activeDropSlot — no index arithmetic needed.
 interface InsertionLineProps {
-  slotIndex: number;        // Which slot this line guards
-  listId: string;           // The list this line belongs to
-  isExpanded: boolean;      // Hide entirely when list is collapsed
+  slotKey: string;      // taskId to insert before, or "end:<listId>"
+  listId: string;       // The list this line belongs to
+  isExpanded: boolean;  // Hide entirely when list is collapsed
 }
 
 /**
  * InsertionLine renders a 3px blue bar that appears at the active drop slot.
- * useAnimatedStyle reads the shared values directly on the UI thread —
- * no useAnimatedReaction needed, it re-runs automatically every frame the
- * values change.
+ * Matches by slotKey (taskId identity) so it is always accurate regardless
+ * of how many items are in the list or how order values have changed.
  */
-function InsertionLine({ slotIndex, listId, isExpanded }: InsertionLineProps) {
-  const { activeDropListId, activeDropIndex, isDragging } = useDragContext();
+function InsertionLine({ slotKey, listId, isExpanded }: InsertionLineProps) {
+  const { activeDropListId, activeDropSlot, isDragging } = useDragContext();
 
-  // Outer container is always 8px tall so the parent overflow:hidden doesn't
-  // clip it. The inner bar fades in/out via opacity — no height animation.
   const barStyle = useAnimatedStyle(() => {
-    // Active when: a drag is happening, this list is the target, and slot matches
+    // Active when dragging, this list is the target, and our key matches
     const isActive =
       isDragging.value &&
       activeDropListId.value === listId &&
-      activeDropIndex.value === slotIndex;
+      activeDropSlot.value === slotKey;
 
     return {
-      opacity: isActive ? 1 : 0,   // fade in when active, invisible otherwise
+      opacity: isActive ? 1 : 0,
     };
   });
 
-  // When list is collapsed the content is hidden — skip rendering
+  // Collapsed list — nothing to show
   if (!isExpanded) return null;
 
-  // Fixed-height wrapper — always occupies 8px so overflow:hidden never clips it.
-  // The 3px blue bar sits centred inside via justifyContent.
   return (
     <View style={styles.insertionLineWrapper}>
       <Animated.View style={[styles.insertionLineBar, barStyle]} />
@@ -84,7 +79,7 @@ function TaskList({
   listIconLeft,
   tasks,
 }: TaskListProps): React.ReactElement {
-  const { listLayouts } = useDragContext();
+  const { listLayouts, currentScrollY } = useDragContext();
 
   // Ref to the outer container — used to measure absolute screen position
   const listRef = useAnimatedRef<Animated.View>();
@@ -159,7 +154,14 @@ function TaskList({
         "worklet";
         // Find existing entry for this list
         const existingIndex = layouts.findIndex((l) => l.listId === listId);
-        const entry = { listId, pageY: m.pageY, height: m.height };
+        const entry = {
+          listId,
+          pageY: m.pageY,
+          height: m.height,
+          // Capture scroll offset at measure time so hitTest can correct for
+          // any scroll that happens between now and when this boundary is queried
+          scrollYAtMeasure: currentScrollY.value,
+        };
         if (existingIndex >= 0) {
           // Replace existing entry with fresh measurements
           layouts[existingIndex] = entry;
@@ -208,8 +210,15 @@ function TaskList({
             }
           }}
         >
-          {/* Insertion line at slot 0 — before the first task item */}
-          <InsertionLine slotIndex={0} listId={listId} isExpanded={isExpanded} />
+          {/* Slot before the first item — key is the first task's taskId.
+              If the list is empty this line is never rendered. */}
+          {tasks.length > 0 && (
+            <InsertionLine
+              slotKey={tasks[0].taskId}
+              listId={listId}
+              isExpanded={isExpanded}
+            />
+          )}
 
           {tasks.map((task, index) => (
             <React.Fragment key={task.taskId}>
@@ -220,9 +229,15 @@ function TaskList({
                 title={task.title}
                 description={task.description}
               />
-              {/* Insertion line after each item — slot index = item index + 1 */}
+              {/* Slot after this item — key is the NEXT item's taskId so it
+                  matches hitTest's "insert before next item" slot key.
+                  The last item's slot uses "end:<listId>" instead. */}
               <InsertionLine
-                slotIndex={index + 1}
+                slotKey={
+                  index < tasks.length - 1
+                    ? tasks[index + 1].taskId
+                    : `end:${listId}`
+                }
                 listId={listId}
                 isExpanded={isExpanded}
               />

@@ -9,16 +9,19 @@ import { TaskItem } from "@/data";
 export type ItemLayout = {
   taskId: string;
   listId: string;
-  pageY: number;   // Absolute Y position of the item on screen
-  height: number;  // Rendered height of the item
-  order: number;   // Current order within the list
+  pageY: number;          // Absolute screen Y at the moment measure() was called
+  height: number;         // Rendered height of the item
+  order: number;          // Current order within the list
+  scrollYAtMeasure: number; // ScrollView offset when pageY was captured — used to
+                            // correct for scroll that happened after the last measure
 };
 
 // Shape of a single list layout entry stored in the registry
 export type ListLayout = {
   listId: string;
-  pageY: number;   // Absolute Y position of the list container on screen
-  height: number;  // Rendered height of the list container
+  pageY: number;          // Absolute screen Y at the moment measure() was called
+  height: number;         // Rendered height of the list container
+  scrollYAtMeasure: number; // ScrollView offset when pageY was captured
 };
 
 // Everything the drag engine and child components need, passed via context
@@ -38,7 +41,11 @@ export type DragContextValue = {
 
   // --- Drop target tracking ---
   activeDropListId: ReturnType<typeof useSharedValue<string | null>>;
-  activeDropIndex: ReturnType<typeof useSharedValue<number>>;
+  // Slot key: taskId of the item the dragged item will land BEFORE,
+  // or "end:<listId>" when dropping after the last item.
+  // Stored as a string so InsertionLine can match by item identity,
+  // not by fragile index arithmetic that breaks as list order changes.
+  activeDropSlot: ReturnType<typeof useSharedValue<string>>;
 
   // --- ScrollView control ---
   scrollEnabled: ReturnType<typeof useSharedValue<boolean>>;
@@ -58,10 +65,9 @@ export type DragContextValue = {
     sourceTaskId: string,
     sourceListId: string,
     targetListId: string,
-    targetIndex: number,
-    // Snapshot of itemLayouts at drop time — used to sort target list by pageY
-    // so the splice position matches what hitTest computed visually
-    currentItemLayouts: ItemLayout[],
+    // Slot key set by hitTest: taskId of the item to insert BEFORE,
+    // or "end:<listId>" when inserting after the last item.
+    targetSlot: string,
   ) => void;
 };
 
@@ -94,7 +100,8 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
 
   // --- Drop target ---
   const activeDropListId = useSharedValue<string | null>(null);
-  const activeDropIndex = useSharedValue(-1);
+  // Empty string = no active drop slot
+  const activeDropSlot = useSharedValue("");
 
   // --- ScrollView ---
   const scrollEnabled = useSharedValue(true);
@@ -113,113 +120,87 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
    * Commits a completed drop to React state.
    * Handles both same-list reorder and cross-list move in one atomic setTasks call.
    * Called from the RN thread via scheduleOnRN after the drop animation finishes.
+   *
+   * Uses the .order field (React state) as the source of truth for item ordering,
+   * NOT pageY positions from the layout registry (which can be stale after reorders).
+   * The targetSlot (taskId or "end:<listId>") was computed by hitTest on the UI thread
+   * and identifies which item to insert before — this is always reliable because
+   * hitTest uses live pageY values at the moment of the drop.
    */
   function commitDrop(
     sourceTaskId: string,
     sourceListId: string,
     targetListId: string,
-    targetIndex: number,
-    currentItemLayouts: ItemLayout[],
+    // Slot key from hitTest: taskId of item to insert BEFORE, or "end:<listId>"
+    targetSlot: string,
   ) {
     setTasks((prevTasks) => {
       // Work on a shallow copy so we don't mutate state directly
       const updated = prevTasks.map((t) => ({ ...t }));
 
+      // Sort tasks by their .order field — this is the canonical ordering
+      // maintained by React state and always consistent with what was rendered.
+      function byOrder(arr: typeof updated) {
+        return arr.sort((a, b) => a.order - b.order);
+      }
+
       if (sourceListId === targetListId) {
         // --- SAME-LIST REORDER ---
-        // Sort by pageY (physical position) to match how hitTest computed targetIndex.
-        // Using pageY instead of order avoids stale order values between drops.
-        const listTasks = updated
-          .filter((t) => t.listId === sourceListId)
-          .sort((a, b) => {
-            // Look up each task's current pageY from the layout snapshot
-            const aLayout = currentItemLayouts.find((l) => l.taskId === a.taskId);
-            const bLayout = currentItemLayouts.find((l) => l.taskId === b.taskId);
-            // Fall back to order if layout not yet measured
-            if (!aLayout || !bLayout) return a.order - b.order;
-            return aLayout.pageY - bLayout.pageY;
-          });
-
-        // Find where the dragged item currently sits in the full sorted array
-        const draggedCurrentIndex = listTasks.findIndex(
-          (t) => t.taskId === sourceTaskId,
+        // Get all tasks in the list except the dragged one, sorted by order
+        const otherTasks = byOrder(
+          updated.filter(
+            (t) => t.listId === sourceListId && t.taskId !== sourceTaskId,
+          ),
         );
+        const dragged = updated.find((t) => t.taskId === sourceTaskId)!;
 
-        // No-op check: targetIndex points to the slot directly before or after
-        // the dragged item — the result would be identical to the current order.
-        // Return prevTasks unchanged to avoid a pointless re-render.
-        if (
-          targetIndex === draggedCurrentIndex ||
-          targetIndex === draggedCurrentIndex + 1
-        ) {
-          return prevTasks;
-        }
+        // Find where to splice — the index of the item we insert before
+        const isEnd = targetSlot === `end:${targetListId}`;
+        const spliceAt = isEnd
+          ? otherTasks.length
+          : otherTasks.findIndex((t) => t.taskId === targetSlot);
 
-        // targetIndex is in full-array terms (matches InsertionLine slotIndex 1:1).
-        // When we remove the dragged item and splice it back in, we need to
-        // adjust the splice position: if the dragged item was before the target
-        // slot, removing it shifts everything left by 1.
-        const spliceIndex =
-          draggedCurrentIndex < targetIndex
-            ? targetIndex - 1  // shift left after removal
-            : targetIndex;     // no shift needed
+        // If slot key is not found (stale reference), append at end
+        const insertAt = spliceAt < 0 ? otherTasks.length : spliceAt;
+        otherTasks.splice(insertAt, 0, dragged);
 
-        // Pull the dragged task out
-        const dragged = listTasks.find((t) => t.taskId === sourceTaskId)!;
-        const rest = listTasks.filter((t) => t.taskId !== sourceTaskId);
-
-        // Insert at the adjusted position
-        rest.splice(spliceIndex, 0, dragged);
-
-        // Write fresh order values back into the updated array
-        rest.forEach((task, i) => {
+        // Write fresh sequential order values back to updated
+        otherTasks.forEach((task, i) => {
           const idx = updated.findIndex((t) => t.taskId === task.taskId);
           updated[idx].order = i;
         });
       } else {
         // --- CROSS-LIST MOVE ---
-        // 1. Move the task to the target list
-        const draggedIdx = updated.findIndex((t) => t.taskId === sourceTaskId);
-        updated[draggedIdx].listId = targetListId;
+        // 1. Move the dragged task to the target list
+        const draggedGlobalIdx = updated.findIndex((t) => t.taskId === sourceTaskId);
+        updated[draggedGlobalIdx].listId = targetListId;
 
-        // Immediately update itemLayouts so the next drag's hitTest sees the
-        // task under its new listId. Without this, itemLayouts holds the old
-        // listId until onLayout re-fires, making the list boundary stale.
-        itemLayouts.value = itemLayouts.value.map((l) =>
-          l.taskId === sourceTaskId ? { ...l, listId: targetListId } : l,
+        // 2. Re-index the source list (dragged item is now gone from it)
+        const sourceRemaining = byOrder(
+          updated.filter((t) => t.listId === sourceListId),
         );
-
-        // 2. Re-index source list — sort by pageY to match physical order, then
-        //    assign fresh sequential order values to close the gap
-        const sourceRemaining = updated
-          .filter((t) => t.listId === sourceListId)
-          .sort((a, b) => {
-            const aLayout = currentItemLayouts.find((l) => l.taskId === a.taskId);
-            const bLayout = currentItemLayouts.find((l) => l.taskId === b.taskId);
-            if (!aLayout || !bLayout) return a.order - b.order;
-            return aLayout.pageY - bLayout.pageY;
-          });
         sourceRemaining.forEach((task, i) => {
           const idx = updated.findIndex((t) => t.taskId === task.taskId);
           updated[idx].order = i;
         });
 
-        // 3. Re-index target list — sort existing items by pageY (same basis as
-        //    hitTest), splice the dragged item in at targetIndex, then assign
-        //    fresh sequential order values
-        const targetExisting = updated
-          .filter((t) => t.listId === targetListId && t.taskId !== sourceTaskId)
-          .sort((a, b) => {
-            const aLayout = currentItemLayouts.find((l) => l.taskId === a.taskId);
-            const bLayout = currentItemLayouts.find((l) => l.taskId === b.taskId);
-            if (!aLayout || !bLayout) return a.order - b.order;
-            return aLayout.pageY - bLayout.pageY;
-          });
+        // 3. Build the target list without the dragged item, splice it in at
+        //    the slot hitTest identified, then assign fresh sequential order values
+        const targetExisting = byOrder(
+          updated.filter(
+            (t) => t.listId === targetListId && t.taskId !== sourceTaskId,
+          ),
+        );
 
-        // Insert the dragged item at the requested slot position
-        targetExisting.splice(targetIndex, 0, updated[draggedIdx]);
+        const isEnd = targetSlot === `end:${targetListId}`;
+        const spliceAt = isEnd
+          ? targetExisting.length
+          : targetExisting.findIndex((t) => t.taskId === targetSlot);
 
-        // Write clean sequential order values for the whole target list
+        // If targetSlot key not found (stale), append at end
+        const insertAt = spliceAt < 0 ? targetExisting.length : spliceAt;
+        targetExisting.splice(insertAt, 0, updated[draggedGlobalIdx]);
+
         targetExisting.forEach((task, i) => {
           const idx = updated.findIndex((t) => t.taskId === task.taskId);
           updated[idx].order = i;
@@ -241,7 +222,7 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
     ghostHeight,
     ghostWidth,
     activeDropListId,
-    activeDropIndex,
+    activeDropSlot,
     scrollEnabled,
     scrollViewRef,
     currentScrollY,
