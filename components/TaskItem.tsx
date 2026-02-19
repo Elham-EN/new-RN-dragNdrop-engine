@@ -345,9 +345,7 @@ export default function TaskItem({
         <Text style={styles.taskTitle}>{title}</Text>
         {/* Task description — smaller and muted */}
         {description ? (
-          <Text style={styles.taskDescription}>
-            {description.substring(0, 40)}
-          </Text>
+          <Text style={styles.taskDescription}>{description}</Text>
         ) : null}
       </Animated.View>
     </GestureDetector>
