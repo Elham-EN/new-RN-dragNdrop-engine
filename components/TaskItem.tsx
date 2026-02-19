@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { scheduleOnUI, scheduleOnRN } from "react-native-worklets";
+import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 
 interface TaskItemProps {
   taskId: string;
@@ -263,7 +263,14 @@ export default function TaskItem({
           "worklet";
           isDragging.value = false;
           // Pass the layout snapshot so commitDrop sorts by pageY, not stale order
-          scheduleOnRN(commitDrop, sourceTaskId, sourceListId, targetListId, targetIndex, layoutsSnapshot);
+          scheduleOnRN(
+            commitDrop,
+            sourceTaskId,
+            sourceListId,
+            targetListId,
+            targetIndex,
+            layoutsSnapshot,
+          );
         });
       } else {
         // Invalid drop — snap ghost back to where the drag started
@@ -338,7 +345,9 @@ export default function TaskItem({
         <Text style={styles.taskTitle}>{title}</Text>
         {/* Task description — smaller and muted */}
         {description ? (
-          <Text style={styles.taskDescription}>{description}</Text>
+          <Text style={styles.taskDescription}>
+            {description.substring(0, 40)}
+          </Text>
         ) : null}
       </Animated.View>
     </GestureDetector>
