@@ -59,6 +59,9 @@ export type DragContextValue = {
     sourceListId: string,
     targetListId: string,
     targetIndex: number,
+    // Snapshot of itemLayouts at drop time — used to sort target list by pageY
+    // so the splice position matches what hitTest computed visually
+    currentItemLayouts: ItemLayout[],
   ) => void;
 };
 
@@ -116,6 +119,7 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
     sourceListId: string,
     targetListId: string,
     targetIndex: number,
+    currentItemLayouts: ItemLayout[],
   ) {
     setTasks((prevTasks) => {
       // Work on a shallow copy so we don't mutate state directly
@@ -123,15 +127,33 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
 
       if (sourceListId === targetListId) {
         // --- SAME-LIST REORDER ---
-        // Get all tasks for this list in current order (includes the dragged item)
+        // Sort by pageY (physical position) to match how hitTest computed targetIndex.
+        // Using pageY instead of order avoids stale order values between drops.
         const listTasks = updated
           .filter((t) => t.listId === sourceListId)
-          .sort((a, b) => a.order - b.order);
+          .sort((a, b) => {
+            // Look up each task's current pageY from the layout snapshot
+            const aLayout = currentItemLayouts.find((l) => l.taskId === a.taskId);
+            const bLayout = currentItemLayouts.find((l) => l.taskId === b.taskId);
+            // Fall back to order if layout not yet measured
+            if (!aLayout || !bLayout) return a.order - b.order;
+            return aLayout.pageY - bLayout.pageY;
+          });
 
         // Find where the dragged item currently sits in the full sorted array
         const draggedCurrentIndex = listTasks.findIndex(
           (t) => t.taskId === sourceTaskId,
         );
+
+        // No-op check: targetIndex points to the slot directly before or after
+        // the dragged item — the result would be identical to the current order.
+        // Return prevTasks unchanged to avoid a pointless re-render.
+        if (
+          targetIndex === draggedCurrentIndex ||
+          targetIndex === draggedCurrentIndex + 1
+        ) {
+          return prevTasks;
+        }
 
         // targetIndex is in full-array terms (matches InsertionLine slotIndex 1:1).
         // When we remove the dragged item and splice it back in, we need to
@@ -160,27 +182,45 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
         const draggedIdx = updated.findIndex((t) => t.taskId === sourceTaskId);
         updated[draggedIdx].listId = targetListId;
 
-        // 2. Re-index source list — close the gap left by the removed task
+        // Immediately update itemLayouts so the next drag's hitTest sees the
+        // task under its new listId. Without this, itemLayouts holds the old
+        // listId until onLayout re-fires, making the list boundary stale.
+        itemLayouts.value = itemLayouts.value.map((l) =>
+          l.taskId === sourceTaskId ? { ...l, listId: targetListId } : l,
+        );
+
+        // 2. Re-index source list — sort by pageY to match physical order, then
+        //    assign fresh sequential order values to close the gap
         const sourceRemaining = updated
           .filter((t) => t.listId === sourceListId)
-          .sort((a, b) => a.order - b.order);
+          .sort((a, b) => {
+            const aLayout = currentItemLayouts.find((l) => l.taskId === a.taskId);
+            const bLayout = currentItemLayouts.find((l) => l.taskId === b.taskId);
+            if (!aLayout || !bLayout) return a.order - b.order;
+            return aLayout.pageY - bLayout.pageY;
+          });
         sourceRemaining.forEach((task, i) => {
           const idx = updated.findIndex((t) => t.taskId === task.taskId);
           updated[idx].order = i;
         });
 
-        // 3. Re-index target list — insert dragged at targetIndex, shift others
-        const targetAll = updated
-          .filter((t) => t.listId === targetListId)
-          .sort((a, b) => a.order - b.order);
+        // 3. Re-index target list — sort existing items by pageY (same basis as
+        //    hitTest), splice the dragged item in at targetIndex, then assign
+        //    fresh sequential order values
+        const targetExisting = updated
+          .filter((t) => t.listId === targetListId && t.taskId !== sourceTaskId)
+          .sort((a, b) => {
+            const aLayout = currentItemLayouts.find((l) => l.taskId === a.taskId);
+            const bLayout = currentItemLayouts.find((l) => l.taskId === b.taskId);
+            if (!aLayout || !bLayout) return a.order - b.order;
+            return aLayout.pageY - bLayout.pageY;
+          });
 
-        // Remove the dragged from wherever it landed in the sorted array
-        const withoutDragged = targetAll.filter((t) => t.taskId !== sourceTaskId);
-        // Insert at the requested position
-        withoutDragged.splice(targetIndex, 0, updated[draggedIdx]);
+        // Insert the dragged item at the requested slot position
+        targetExisting.splice(targetIndex, 0, updated[draggedIdx]);
 
-        // Write clean order values for the whole target list
-        withoutDragged.forEach((task, i) => {
+        // Write clean sequential order values for the whole target list
+        targetExisting.forEach((task, i) => {
           const idx = updated.findIndex((t) => t.taskId === task.taskId);
           updated[idx].order = i;
         });
