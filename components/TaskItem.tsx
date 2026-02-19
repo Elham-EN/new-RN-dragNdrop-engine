@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { scheduleOnUI, scheduleOnRN } from "react-native-worklets";
+import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 
 interface TaskItemProps {
   taskId: string;
@@ -74,15 +74,63 @@ export default function TaskItem({
    */
   function hitTest(fingerY: number) {
     "worklet";
-    // Find which list the finger is inside
-    let foundListId: string | null = null;
-    for (let i = 0; i < listLayouts.value.length; i++) {
-      const list = listLayouts.value[i];
-      if (fingerY >= list.pageY && fingerY <= list.pageY + list.height) {
-        foundListId = list.listId;
-        break;
+
+    // Group all item layouts by listId so we can derive each list's live boundary
+    // directly from its items — avoids depending on listLayouts which can be stale
+    // when a list grows after a drop (animated height bypasses onLayout).
+    const allItems = itemLayouts.value;
+
+    // Build a map: listId → items sorted by pageY
+    // We need to check every known list to see if the finger is inside it.
+    // Collect the unique list IDs present in itemLayouts.
+    const seenListIds: string[] = [];
+    for (let i = 0; i < allItems.length; i++) {
+      const lid = allItems[i].listId;
+      if (!seenListIds.includes(lid)) {
+        seenListIds.push(lid);
       }
     }
+
+    // Also include lists from listLayouts that have no items yet (empty lists)
+    // so the finger can enter them for a drop.
+    for (let i = 0; i < listLayouts.value.length; i++) {
+      const lid = listLayouts.value[i].listId;
+      if (!seenListIds.includes(lid)) {
+        seenListIds.push(lid);
+      }
+    }
+
+    let foundListId: string | null = null;
+
+    for (let i = 0; i < seenListIds.length; i++) {
+      const lid = seenListIds[i];
+      const items = allItems
+        .filter((item) => item.listId === lid)
+        .sort((a, b) => a.pageY - b.pageY);
+
+      if (items.length > 0) {
+        // Derive list boundary from its items: top of first item to bottom of last
+        const listTop = items[0].pageY;
+        const lastItem = items[items.length - 1];
+        const listBottom = lastItem.pageY + lastItem.height;
+        if (fingerY >= listTop && fingerY <= listBottom) {
+          foundListId = lid;
+          break;
+        }
+      } else {
+        // Empty list — fall back to listLayouts boundary
+        const layout = listLayouts.value.find((l) => l.listId === lid);
+        if (
+          layout &&
+          fingerY >= layout.pageY &&
+          fingerY <= layout.pageY + layout.height
+        ) {
+          foundListId = lid;
+          break;
+        }
+      }
+    }
+
     activeDropListId.value = foundListId;
 
     if (foundListId === null) {
@@ -92,11 +140,11 @@ export default function TaskItem({
     }
 
     // Within the found list, determine the insertion slot by comparing the
-    // finger Y to each item's midpoint. Include the dragged item so that
-    // insertIndex maps 1:1 to the InsertionLine slotIndex values (0..N).
-    const listItems = itemLayouts.value
+    // finger Y to each item's midpoint. Sort by pageY — always current,
+    // unlike the order field which can be stale between drops.
+    const listItems = allItems
       .filter((item) => item.listId === foundListId)
-      .sort((a, b) => a.order - b.order);
+      .sort((a, b) => a.pageY - b.pageY);
 
     // Default: drop at the end of the list
     let insertIndex = listItems.length;
@@ -208,11 +256,21 @@ export default function TaskItem({
       ) {
         // Valid drop — animate ghost to the target slot then commit state
         // For simplicity, snap ghost back to origin position then fade out
+        // Snapshot itemLayouts now (before the animation completes) so commitDrop
+        // can sort by the same pageY values that hitTest used to compute targetIndex
+        const layoutsSnapshot = itemLayouts.value;
         ghostY.value = withTiming(ghostOriginY.value, { duration: 150 }, () => {
           "worklet";
           isDragging.value = false;
-          // Call commitDrop on the JS/RN thread — scheduleOnRN bridges UI thread → JS thread
-          scheduleOnRN(commitDrop, sourceTaskId, sourceListId, targetListId, targetIndex);
+          // Pass the layout snapshot so commitDrop sorts by pageY, not stale order
+          scheduleOnRN(
+            commitDrop,
+            sourceTaskId,
+            sourceListId,
+            targetListId,
+            targetIndex,
+            layoutsSnapshot,
+          );
         });
       } else {
         // Invalid drop — snap ghost back to where the drag started

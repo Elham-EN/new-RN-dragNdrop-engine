@@ -25,31 +25,44 @@ function DragGhost() {
     ghostDescription,
   } = useDragContext();
 
+  // Ghost shrinks to 70% of the original item size when picked up.
+  // To keep it visually centred on the finger, we offset left/top by
+  // half the size reduction: e.g. if width shrinks by 30%, shift right
+  // by 15% of the original width so the ghost stays under the finger.
+  const GHOST_SCALE = 0.7; // how small the ghost appears while dragging
+
   // Drives absolute position, size, and visibility of the floating ghost
-  const ghostStyle = useAnimatedStyle(() => ({
-    position: "absolute",
-    left: ghostX.value,
-    top: ghostY.value,
-    width: ghostWidth.value,
-    height: ghostHeight.value,
-    // Only visible during a drag
-    opacity: isDragging.value ? 1 : 0,
-    zIndex: 9999,
-    // Slight scale lift to communicate the item is held
-    transform: [{ scale: isDragging.value ? 1.03 : 1 }],
-    // Ghost should never intercept touches on items below it
-    pointerEvents: "none",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 12,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    justifyContent: "center",
-  }));
+  const ghostStyle = useAnimatedStyle(() => {
+    // Amount the ghost shrinks on each axis — used to re-centre it
+    const xOffset = (ghostWidth.value * (1 - GHOST_SCALE)) / 2;
+    const yOffset = (ghostHeight.value * (1 - GHOST_SCALE)) / 2;
+
+    return {
+      position: "absolute",
+      // Shift origin so the scaled-down ghost stays centred on the pickup point
+      left: ghostX.value + xOffset,
+      top: ghostY.value + yOffset,
+      width: ghostWidth.value,
+      height: ghostHeight.value,
+      // Only visible during a drag
+      opacity: isDragging.value ? 1 : 0,
+      zIndex: 9999,
+      // Scale down to GHOST_SCALE so the ghost looks smaller than the real item
+      transform: [{ scale: isDragging.value ? GHOST_SCALE : 1 }],
+      // Ghost should never intercept touches on items below it
+      pointerEvents: "none",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.25,
+      shadowRadius: 10,
+      elevation: 12,
+      backgroundColor: "#fff",
+      borderRadius: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      justifyContent: "center",
+    };
+  });
 
   // Feeds ghostTitle shared value into Animated.Text as an animatedProp
   const titleAnimatedProps = useAnimatedProps(() => ({
