@@ -80,3 +80,39 @@ UI Thread (worklets)          RN/JS Thread
    ```bash
    npx expo start
    ```
+
+## Contributing
+
+Contributions are welcome! This project is open source under the [MIT License](LICENSE).
+
+### How to Contribute
+
+1. **Fork** the repository
+2. **Create a branch** for your feature or fix
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Make your changes** — follow the existing code style and comment conventions
+4. **Test on a real device** — drag-and-drop behaviour can differ between simulators and physical devices, so always verify on hardware
+5. **Commit** with a clear message describing what changed and why
+6. **Push** your branch and open a **Pull Request** against `main`
+
+### Guidelines
+
+- **Keep it simple** — avoid over-engineering. Only add what is needed for the feature or fix.
+- **Comment your code** — every function and significant variable should have a short comment explaining what it does and why.
+- **UI thread awareness** — gesture callbacks and hit-test logic run as worklets. Any new logic in these paths must use the `"worklet"` directive and avoid JS-thread APIs. Use `scheduleOnRN` to call JS-thread functions from worklets.
+- **Test across lists** — verify within-list reorder, cross-list move, empty list drops, and auto-scroll behaviour.
+- **No breaking changes** without discussion — if your change affects the public API or drag behaviour, open an issue first to discuss the approach.
+
+### Ideas for Contribution
+
+- Drag handle support (drag from a specific grip icon instead of long-press anywhere)
+- Animated item reflow (items slide apart to make room for the dragged item)
+- Horizontal list support
+- Accessibility improvements (screen reader announcements during drag)
+- Performance profiling and optimisation for very long lists (100+ items)
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
