@@ -2,6 +2,22 @@
 
 A custom-built drag-and-drop engine for reordering and moving items across lists in React Native. Built from scratch because existing third-party drag-and-drop libraries are outdated, relying on the old React Native architecture and deprecated APIs that no longer align with the modern ecosystem.
 
+## Table of Contents
+
+- [Demo](#demo)
+- [Why Build This?](#why-build-this)
+- [Tech Stack](#tech-stack)
+- [Features](#features)
+- [Architecture](#architecture)
+- [How It Works](#how-it-works)
+- [Get Started](#get-started)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Demo
+
+<video src="assets/preview.MP4" width="300" controls></video>
+
 ## Why Build This?
 
 Third-party drag-and-drop libraries for React Native have not kept pace with the platform. Most still target the legacy architecture (Bridge-based) and depend on older versions of Reanimated, Gesture Handler, and lack support for the new worklets threading model. This leads to:
