@@ -120,13 +120,14 @@ function TaskList({
   }));
 
   // Animates the content container height and opacity.
-  // When fully expanded (progress=1), use auto height so items lay out naturally
-  // and measure() returns correct positions on first mount.
+  // When fully expanded (progress=1), explicitly clear any stale height with
+  // "auto" so the container follows its children's natural size — this ensures
+  // the list shrinks when items are dragged out and grows when items are added.
   // Only constrain height during the collapse/expand animation.
   const contentAnimatedStyle = useAnimatedStyle(() => {
-    // Fully expanded — let the container use its natural height
+    // Fully expanded — explicitly set "auto" to clear any stale animated height
     if (progress.value === 1) {
-      return { opacity: 1 };
+      return { height: "auto", opacity: 1 };
     }
     // Fully collapsed — zero height and hidden
     if (progress.value === 0) {
@@ -214,9 +215,10 @@ function TaskList({
         <View
           style={styles.taskItemsContainer}
           onLayout={(event) => {
-            // Capture the natural height of the content for the animation target
+            // Capture the natural height of the content for the collapse animation target.
+            // Always update so shrinking lists get an accurate collapse target.
             const h = event.nativeEvent.layout.height;
-            if (h > 0 && h !== contentHeight) {
+            if (h !== contentHeight) {
               setContentHeight(h);
             }
           }}

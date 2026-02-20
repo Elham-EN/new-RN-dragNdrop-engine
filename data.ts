@@ -17,6 +17,16 @@ export const lists: ListData[] = [
     listName: "Today",
     listIcon: "sunny-outline",
   },
+  {
+    listId: "listUpcoming003",
+    listName: "Upcoming",
+    listIcon: "calendar-outline",
+  },
+  {
+    listId: "listSomeday004",
+    listName: "Someday",
+    listIcon: "albums-outline",
+  },
 ];
 
 export type TaskItem = {
