@@ -16,7 +16,7 @@ A custom-built drag-and-drop engine for reordering and moving items across lists
 
 ## Demo
 
-<img src="assets/preview.gif" width="300" alt="Drag and drop demo" />
+<img src="assets/preview.gif?v=2" width="300" alt="Drag and drop demo" />
 
 ## Why Build This?
 
