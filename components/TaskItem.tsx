@@ -367,9 +367,9 @@ export default function TaskItem({
         {/* Task title — bold and prominent */}
         <Text style={styles.taskTitle}>{title}</Text>
         {/* Task description — smaller and muted */}
-        {/* {description ? (
+        {description ? (
           <Text style={styles.taskDescription}>{description}</Text>
-        ) : null} */}
+        ) : null}
       </Animated.View>
     </GestureDetector>
   );
