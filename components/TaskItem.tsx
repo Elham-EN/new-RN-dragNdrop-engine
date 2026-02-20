@@ -4,6 +4,7 @@
 // While dragging: moves the ghost, hit-tests the layout registry each frame.
 // On drop: commits state via scheduleOnRN, cleans up.
 import { useDragContext } from "@/context/DragContext";
+import * as Haptics from "expo-haptics";
 import * as React from "react";
 import { StyleSheet, Text } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -17,6 +18,28 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
+
+// ─── Haptic helpers — called from UI thread via scheduleOnRN ─────────────────
+
+// Fires a medium impact haptic — used when the drag gesture activates (pickup)
+function hapticPickup() {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+}
+
+// Fires a light selection haptic — used when the drop slot changes mid-drag
+function hapticSlotChange() {
+  Haptics.selectionAsync();
+}
+
+// Fires a success notification haptic — used when the item is dropped successfully
+function hapticDropSuccess() {
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+}
+
+// Fires a light impact haptic — used when the drop is invalid and ghost snaps back
+function hapticDropInvalid() {
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+}
 
 interface TaskItemProps {
   taskId: string;
@@ -65,6 +88,9 @@ export default function TaskItem({
 
   // Controls this item's opacity — set to 0 when it is the item being dragged
   const selfOpacity = useSharedValue(1);
+
+  // Tracks the previous drop slot so we can detect when it changes and fire a haptic
+  const previousSlot = useSharedValue("");
 
   /**
    * Hit-test: determines which list and slot the finger is over.
@@ -210,6 +236,10 @@ export default function TaskItem({
       // absoluteY is not available in onStart, so use the ghost origin midpoint
       // as an approximation — the finger is on the item at this moment.
       hitTest(ghostOriginY.value + ghostHeight.value / 2);
+
+      // Reset slot tracker and fire pickup haptic on the RN thread
+      previousSlot.value = activeDropSlot.value;
+      scheduleOnRN(hapticPickup);
     })
 
     .onUpdate((event) => {
@@ -222,6 +252,14 @@ export default function TaskItem({
       // absoluteY is always the current absolute screen Y of the finger —
       // it matches pageY from measure() which is also in absolute screen space.
       hitTest(event.absoluteY);
+
+      // Fire a light haptic tick when the drop slot changes — gives tactile
+      // feedback as the insertion line jumps between gaps
+      const currentSlot = activeDropSlot.value;
+      if (currentSlot !== previousSlot.value && currentSlot !== "") {
+        previousSlot.value = currentSlot;
+        scheduleOnRN(hapticSlotChange);
+      }
 
       // Auto-scroll if the finger is near the top or bottom edge
       checkAutoScroll(event.absoluteY);
@@ -251,6 +289,8 @@ export default function TaskItem({
           targetListId,
           targetSlot,
         );
+        // Fire a success haptic to confirm the drop landed
+        scheduleOnRN(hapticDropSuccess);
       } else {
         // Invalid drop — snap ghost back to where the drag started
         ghostX.value = withSpring(ghostOriginX.value);
@@ -258,6 +298,8 @@ export default function TaskItem({
           "worklet";
           isDragging.value = false;
         });
+        // Fire a warning haptic to signal the drop was rejected
+        scheduleOnRN(hapticDropInvalid);
       }
 
       // Re-enable scrolling immediately
@@ -325,9 +367,9 @@ export default function TaskItem({
         {/* Task title — bold and prominent */}
         <Text style={styles.taskTitle}>{title}</Text>
         {/* Task description — smaller and muted */}
-        {description ? (
+        {/* {description ? (
           <Text style={styles.taskDescription}>{description}</Text>
-        ) : null}
+        ) : null} */}
       </Animated.View>
     </GestureDetector>
   );
