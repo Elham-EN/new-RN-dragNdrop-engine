@@ -9,23 +9,23 @@ export type ListData = {
 export const lists: ListData[] = [
   {
     listId: "listInbox001",
-    listName: "Inbox",
-    listIcon: "archive-outline",
+    listName: "List1",
+    listIcon: "list-outline",
   },
   {
     listId: "listToday002",
-    listName: "Today",
-    listIcon: "sunny-outline",
+    listName: "List2",
+    listIcon: "list-outline",
   },
   {
     listId: "listUpcoming003",
-    listName: "Upcoming",
-    listIcon: "calendar-outline",
+    listName: "List3",
+    listIcon: "list-outline",
   },
   {
     listId: "listSomeday004",
-    listName: "Someday",
-    listIcon: "albums-outline",
+    listName: "List4",
+    listIcon: "list-outline",
   },
 ];
 
