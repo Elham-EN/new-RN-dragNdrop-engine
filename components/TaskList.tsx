@@ -119,9 +119,20 @@ function TaskList({
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
 
-  // Animates the content container height and opacity
+  // Animates the content container height and opacity.
+  // When fully expanded (progress=1), use auto height so items lay out naturally
+  // and measure() returns correct positions on first mount.
+  // Only constrain height during the collapse/expand animation.
   const contentAnimatedStyle = useAnimatedStyle(() => {
-    // Interpolate between 0 and the measured content height
+    // Fully expanded — let the container use its natural height
+    if (progress.value === 1) {
+      return { opacity: 1 };
+    }
+    // Fully collapsed — zero height and hidden
+    if (progress.value === 0) {
+      return { height: 0, opacity: 0, overflow: "hidden" as const };
+    }
+    // Mid-animation — interpolate between 0 and measured content height
     const animatedHeight = interpolate(
       progress.value,
       [0, 1],
@@ -131,7 +142,7 @@ function TaskList({
     return {
       height: animatedHeight,
       opacity: progress.value,
-      // No overflow:hidden — it would clip the insertion line bars during drag
+      overflow: "hidden" as const,
     };
   });
 
@@ -211,7 +222,9 @@ function TaskList({
           }}
         >
           {/* Slot before the first item — key is the first task's taskId.
-              If the list is empty this line is never rendered. */}
+              When dragging this item, the hit-test will never output its ID,
+              but the InsertionLine below it (slotKey=next item) will light up
+              at the correct visual position instead. */}
           {tasks.length > 0 && (
             <InsertionLine
               slotKey={tasks[0].taskId}
@@ -243,6 +256,16 @@ function TaskList({
               />
             </React.Fragment>
           ))}
+
+          {/* Slot for empty list — allows dropping into a list with no items.
+              Only rendered when the list has zero tasks (e.g. all moved out). */}
+          {tasks.length === 0 && (
+            <InsertionLine
+              slotKey={`end:${listId}`}
+              listId={listId}
+              isExpanded={isExpanded}
+            />
+          )}
         </View>
       </Animated.View>
       {/* END OF TASK ITEMS */}

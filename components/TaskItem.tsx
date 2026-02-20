@@ -69,14 +69,12 @@ export default function TaskItem({
   /**
    * Hit-test: determines which list and slot the finger is over.
    *
-   * Key insight: the dragged item is hidden (opacity 0) but still occupies
-   * layout space. So items below it in the same list have their pageY pushed
-   * down by the dragged item's height. The hit-test excludes the dragged item
-   * from midpoint comparisons, but the remaining items' positions are "inflated"
-   * by that phantom gap. To compensate, we subtract the dragged item's height
-   * from the livePageY of every item that sits below the dragged item's
-   * original position in the same list. This makes the midpoints match the
-   * visual positions the user perceives (as if the dragged item disappeared).
+   * Uses real layout positions (no phantom-space compensation) so the hit-test
+   * midpoints match exactly where the InsertionLine components physically sit.
+   * The dragged item is hidden but still occupies layout space — that's fine
+   * because the InsertionLine wrappers also sit at those real positions.
+   * The dragged item is excluded from midpoint comparisons so the finger
+   * can pass through its phantom space and reach the items below.
    */
   function hitTest(fingerY: number) {
     "worklet";
@@ -93,31 +91,17 @@ export default function TaskItem({
       scrollYAtMeasure: number;
     }): number {
       "worklet";
-      // How much the scroll moved since this item was last measured
       const scrollDelta = scrollNow - item.scrollYAtMeasure;
-      // Items move UP the screen as scroll increases — subtract the delta
       return item.pageY - scrollDelta;
     }
 
-    // Find the dragged item's layout so we can compensate for its phantom space
     const draggedId = draggedTaskId.value;
-    const draggedFromList = draggedFromListId.value;
-    const draggedLayout = draggedId
-      ? allItems.find((item) => item.taskId === draggedId)
-      : null;
-    // The dragged item's live Y — items below this in the same list need adjustment
-    const draggedLiveY = draggedLayout ? livePageY(draggedLayout) : 0;
-    // Total space the dragged item occupies (height + marginBottom from styles)
-    const draggedSpace = draggedLayout ? draggedLayout.height + 6 : 0;
 
-    // Use listLayouts as the primary source for list boundary detection.
-    // This includes the full list container (header + items), so the finger
-    // can target a list even when hovering over its header or empty space.
+    // Use listLayouts for list boundary detection — includes header + items
     let foundListId: string | null = null;
 
     for (let i = 0; i < listLayouts.value.length; i++) {
       const layout = listLayouts.value[i];
-      // Correct for scroll that happened since this list was measured
       const layoutScrollDelta = scrollNow - layout.scrollYAtMeasure;
       const layoutTop = layout.pageY - layoutScrollDelta;
       const layoutBottom = layoutTop + layout.height;
@@ -130,36 +114,25 @@ export default function TaskItem({
     activeDropListId.value = foundListId;
 
     if (foundListId === null) {
-      // Finger is outside all lists — clear slot and bail
       activeDropSlot.value = "";
       return;
     }
 
-    // Within the found list, find the insertion slot.
-    // Exclude the dragged item itself — inserting "before yourself" is a no-op.
+    // Get all items in this list EXCEPT the dragged item, sorted by screen Y.
+    // Excluding the dragged item means its phantom space becomes a "pass-through"
+    // zone — the finger flows through it to reach adjacent item midpoints.
     const listItems = allItems
       .filter(
         (item) => item.listId === foundListId && item.taskId !== draggedId,
       )
       .sort((a, b) => livePageY(a) - livePageY(b));
 
-    // For same-list drags, items below the dragged item's original position
-    // need their midpoints shifted up by the dragged item's height+margin.
-    // This compensates for the phantom space the hidden dragged item occupies.
+    // Walk items top-to-bottom. The slot is "insert before" the first item
+    // whose midpoint is below the finger. If the finger is past all midpoints
+    // the slot is "end" (append after last item).
     let slot = `end:${foundListId}`;
     for (let j = 0; j < listItems.length; j++) {
-      let itemY = livePageY(listItems[j]);
-
-      // Shift items below the dragged item up to close the phantom gap
-      if (
-        draggedLayout &&
-        foundListId === draggedFromList &&
-        itemY > draggedLiveY
-      ) {
-        itemY -= draggedSpace;
-      }
-
-      const itemMidY = itemY + listItems[j].height / 2;
+      const itemMidY = livePageY(listItems[j]) + listItems[j].height / 2;
       if (fingerY < itemMidY) {
         slot = listItems[j].taskId;
         break;
