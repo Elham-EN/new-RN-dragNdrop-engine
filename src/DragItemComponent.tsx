@@ -1,9 +1,9 @@
-// TaskItem — a single draggable task row.
+// DragItemComponent — a single draggable item row.
 // Wraps its content in a GestureDetector with a long-press pan gesture.
 // On pickup: positions the ghost, hides itself, disables scroll.
 // While dragging: moves the ghost, hit-tests the layout registry each frame.
 // On drop: commits state via scheduleOnRN, cleans up.
-import { useDragContext } from "@/context/DragContext";
+import { useDragContext } from "./DragContext";
 import * as Haptics from "expo-haptics";
 import * as React from "react";
 import { StyleSheet, Text } from "react-native";
@@ -41,26 +41,27 @@ function hapticDropInvalid() {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 }
 
-interface TaskItemProps {
-  taskId: string;
-  listId: string;
-  // Current position of this task within its list — used for hit-test comparisons
+// Props for the DragItemComponent — matches the base DragItem fields
+interface DragItemComponentProps {
+  taskId: string; // Unique identifier for this item
+  listId: string; // Which list this item belongs to
+  // Current position of this item within its list — used for hit-test comparisons
   order: number;
-  title: string;
-  description?: string;
+  title: string; // Display title shown in the item row
+  description?: string; // Optional secondary text
 }
 
 /**
- * TaskItem renders a single task row and owns the full drag gesture lifecycle.
+ * DragItemComponent renders a single item row and owns the full drag gesture lifecycle.
  * All gesture callbacks run as worklets on the UI thread for 60/120fps tracking.
  */
-export default function TaskItem({
+export default function DragItemComponent({
   taskId,
   listId,
   order,
   title,
   description,
-}: TaskItemProps): React.ReactElement {
+}: DragItemComponentProps): React.ReactElement {
   const {
     isDragging,
     draggedTaskId,
@@ -364,9 +365,9 @@ export default function TaskItem({
         style={[styles.taskItem, itemAnimatedStyle]}
         onLayout={handleLayout}
       >
-        {/* Task title — bold and prominent */}
+        {/* Item title — bold and prominent */}
         <Text style={styles.taskTitle}>{title}</Text>
-        {/* Task description — smaller and muted */}
+        {/* Item description — smaller and muted */}
         {description ? (
           <Text style={styles.taskDescription}>{description}</Text>
         ) : null}
@@ -376,7 +377,7 @@ export default function TaskItem({
 }
 
 const styles = StyleSheet.create({
-  // Individual task row — marginBottom creates the gap where the insertion line sits
+  // Individual item row — marginBottom creates the gap where the insertion line sits
   taskItem: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -384,14 +385,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#fff",
   },
-  // Task title styling
+  // Item title styling
   taskTitle: {
     fontSize: 16,
     fontWeight: "500",
     color: "#1C1C1E",
     marginBottom: 4,
   },
-  // Task description styling
+  // Item description styling
   taskDescription: {
     fontSize: 14,
     color: "#8E8E93",

@@ -1,28 +1,10 @@
 // DragContext — owns all shared drag state (shared values) and the layout registry.
 // Every component reads from and writes to these values during a drag.
+// Generic over T so users can extend DragItem with their own fields.
 import * as React from "react";
 import { useSharedValue, useAnimatedRef } from "react-native-reanimated";
 import type Animated from "react-native-reanimated";
-import { TaskItem } from "@/data";
-
-// Shape of a single item layout entry stored in the registry
-export type ItemLayout = {
-  taskId: string;
-  listId: string;
-  pageY: number;          // Absolute screen Y at the moment measure() was called
-  height: number;         // Rendered height of the item
-  order: number;          // Current order within the list
-  scrollYAtMeasure: number; // ScrollView offset when pageY was captured — used to
-                            // correct for scroll that happened after the last measure
-};
-
-// Shape of a single list layout entry stored in the registry
-export type ListLayout = {
-  listId: string;
-  pageY: number;          // Absolute screen Y at the moment measure() was called
-  height: number;         // Rendered height of the list container
-  scrollYAtMeasure: number; // ScrollView offset when pageY was captured
-};
+import { DragItem, ItemLayout, ListLayout } from "./types";
 
 // Everything the drag engine and child components need, passed via context
 export type DragContextValue = {
@@ -52,7 +34,7 @@ export type DragContextValue = {
   scrollViewRef: ReturnType<typeof useAnimatedRef<Animated.ScrollView>>;
   currentScrollY: ReturnType<typeof useSharedValue<number>>;
 
-  // --- Layout registry (updated by each TaskItem and TaskList on layout) ---
+  // --- Layout registry (updated by each DragItem and DragList on layout) ---
   itemLayouts: ReturnType<typeof useSharedValue<ItemLayout[]>>;
   listLayouts: ReturnType<typeof useSharedValue<ListLayout[]>>;
 
@@ -74,17 +56,21 @@ export type DragContextValue = {
 // The context — undefined until the provider mounts
 const DragContext = React.createContext<DragContextValue | undefined>(undefined);
 
-// Props for the provider — needs the setTasks updater from index.tsx
-type DragProviderProps = {
+// Props for the provider — generic so users can pass their own extended DragItem type
+type DragProviderProps<T extends DragItem> = {
   children: React.ReactNode;
-  setTasks: React.Dispatch<React.SetStateAction<TaskItem[]>>;
+  setTasks: React.Dispatch<React.SetStateAction<T[]>>;
 };
 
 /**
  * DragProvider wraps the whole screen and creates all shared values.
  * Pass setTasks down so commitDrop can update React state after a drop.
+ * Generic over T so the setTasks updater can work with extended item types.
  */
-export function DragProvider({ children, setTasks }: DragProviderProps) {
+export function DragProvider<T extends DragItem>({
+  children,
+  setTasks,
+}: DragProviderProps<T>) {
   // --- Drag identity ---
   const isDragging = useSharedValue(false);
   const draggedTaskId = useSharedValue<string | null>(null);
@@ -172,7 +158,9 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
       } else {
         // --- CROSS-LIST MOVE ---
         // 1. Move the dragged task to the target list
-        const draggedGlobalIdx = updated.findIndex((t) => t.taskId === sourceTaskId);
+        const draggedGlobalIdx = updated.findIndex(
+          (t) => t.taskId === sourceTaskId,
+        );
         updated[draggedGlobalIdx].listId = targetListId;
 
         // 2. Re-index the source list (dragged item is now gone from it)
@@ -211,6 +199,7 @@ export function DragProvider({ children, setTasks }: DragProviderProps) {
     });
   }
 
+  // All shared values and functions bundled into a single context value
   const value: DragContextValue = {
     isDragging,
     draggedTaskId,

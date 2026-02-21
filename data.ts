@@ -1,4 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { DragItem } from "@/src/types";
+
+// Re-export DragItem as TaskItem for backward compatibility with the demo app
+export type TaskItem = DragItem;
 
 export type ListData = {
   listId: string;
@@ -28,15 +32,6 @@ export const lists: ListData[] = [
     listIcon: "list-outline",
   },
 ];
-
-export type TaskItem = {
-  taskId: string;
-  listId: string;
-  // Controls the display order within a list — used for reordering on drag
-  order: number;
-  title: string;
-  description: string;
-};
 
 export const tasks: TaskItem[] = [
   {
