@@ -7,9 +7,11 @@ import * as React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {
   useAnimatedProps,
+  useAnimatedReaction,
   useAnimatedStyle,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { scheduleOnRN } from "react-native-worklets";
 
 // ─── DragGhost ────────────────────────────────────────────────────────────────
 // Floating copy of the dragged item rendered above everything (position: absolute).
@@ -25,10 +27,30 @@ function DragGhost() {
     ghostDescription,
   } = useDragContext();
 
-  // Ghost shrinks to 70% of the original item size when picked up.
+  // React state that mirrors the shared values — updated via scheduleOnRN
+  // so the ghost can render actual Text children instead of broken animatedProps
+  const [displayTitle, setDisplayTitle] = React.useState("");
+  const [displayDescription, setDisplayDescription] = React.useState("");
+
+  // Sync ghostTitle shared value to React state when it changes on the UI thread
+  useAnimatedReaction(
+    () => ghostTitle.value,
+    (current) => {
+      scheduleOnRN(setDisplayTitle, current);
+    },
+  );
+
+  // Sync ghostDescription shared value to React state when it changes on the UI thread
+  useAnimatedReaction(
+    () => ghostDescription.value,
+    (current) => {
+      scheduleOnRN(setDisplayDescription, current);
+    },
+  );
+
+  // Ghost shrinks to 35% of the original item size when picked up.
   // To keep it visually centred on the finger, we offset left/top by
-  // half the size reduction: e.g. if width shrinks by 30%, shift right
-  // by 15% of the original width so the ghost stays under the finger.
+  // half the size reduction so the ghost stays under the finger.
   const GHOST_SCALE = 0.35; // how small the ghost appears while dragging
 
   // Drives absolute position, size, and visibility of the floating ghost
@@ -64,37 +86,14 @@ function DragGhost() {
     };
   });
 
-  // Feeds ghostTitle shared value into Animated.Text as an animatedProp
-  const titleAnimatedProps = useAnimatedProps(
-    () =>
-      ({
-        text: ghostTitle.value,
-        // defaultValue prevents a flicker when the shared value first updates
-        defaultValue: "",
-      }) as any,
-  );
-
-  // Feeds ghostDescription shared value into Animated.Text
-  const descriptionAnimatedProps = useAnimatedProps(
-    () =>
-      ({
-        text: ghostDescription.value,
-        defaultValue: "",
-      }) as any,
-  );
-
   return (
     <Animated.View style={ghostStyle}>
       {/* Title row — mirrors TaskItem title styling */}
-      <Animated.Text
-        style={styles.ghostTitle}
-        animatedProps={titleAnimatedProps}
-      />
+      <Text style={styles.ghostTitle}>{displayTitle}</Text>
       {/* Description row — mirrors TaskItem description styling */}
-      <Animated.Text
-        style={styles.ghostDescription}
-        animatedProps={descriptionAnimatedProps}
-      />
+      {displayDescription ? (
+        <Text style={styles.ghostDescription}>{displayDescription}</Text>
+      ) : null}
     </Animated.View>
   );
 }

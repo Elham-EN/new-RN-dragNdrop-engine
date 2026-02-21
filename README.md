@@ -1,18 +1,27 @@
-# Drag & Drop Engine for React Native
+# React-Native-DnD-Engine
 
 A custom-built drag-and-drop engine for reordering and moving items across lists in React Native. Built from scratch because existing third-party drag-and-drop libraries are outdated, relying on the old React Native architecture and deprecated APIs that no longer align with the modern ecosystem.
 
 ## Table of Contents
 
-- [Demo](#demo)
-- [Why Build This?](#why-build-this)
-- [Tech Stack](#tech-stack)
-- [Features](#features)
-- [Architecture](#architecture)
-- [How It Works](#how-it-works)
-- [Get Started](#get-started)
-- [Contributing](#contributing)
-- [License](#license)
+- [React-Native-DnD-Engine](#react-native-dnd-engine)
+  - [Table of Contents](#table-of-contents)
+  - [Demo](#demo)
+  - [Why Build This?](#why-build-this)
+  - [Tech Stack](#tech-stack)
+  - [Features](#features)
+  - [Architecture](#architecture)
+    - [1. Shared State (`DragContext`)](#1-shared-state-dragcontext)
+    - [2. Gesture \& Hit-Test (`TaskItem`)](#2-gesture--hit-test-taskitem)
+    - [3. Layout Registry (`TaskItem` + `TaskList`)](#3-layout-registry-taskitem--tasklist)
+    - [Threading Model](#threading-model)
+  - [How It Works](#how-it-works)
+  - [Get Started](#get-started)
+  - [Contributing](#contributing)
+    - [How to Contribute](#how-to-contribute)
+    - [Guidelines](#guidelines)
+    - [Ideas for Contribution](#ideas-for-contribution)
+  - [License](#license)
 
 ## Demo
 
@@ -30,13 +39,13 @@ This engine was built to run entirely on the **New Architecture** with the lates
 
 ## Tech Stack
 
-| Dependency | Version | Role |
-|---|---|---|
-| React Native | 0.81 | New Architecture (Bridgeless, Fabric) |
-| Reanimated 4 | ~4.1.1 | Shared values, `useAnimatedStyle`, `measure()` on UI thread |
-| Gesture Handler | ~2.28.0 | Pan gesture with long-press activation, simultaneous gesture handling |
-| React Native Worklets | 0.5.1 | `scheduleOnUI` / `scheduleOnRN` for cross-thread communication |
-| Expo Haptics | ~15.0.8 | Tactile feedback on pickup, slot change, and drop |
+| Dependency            | Version | Role                                                                  |
+| --------------------- | ------- | --------------------------------------------------------------------- |
+| React Native          | 0.81    | New Architecture (Bridgeless, Fabric)                                 |
+| Reanimated 4          | ~4.1.1  | Shared values, `useAnimatedStyle`, `measure()` on UI thread           |
+| Gesture Handler       | ~2.28.0 | Pan gesture with long-press activation, simultaneous gesture handling |
+| React Native Worklets | 0.5.1   | `scheduleOnUI` / `scheduleOnRN` for cross-thread communication        |
+| Expo Haptics          | ~15.0.8 | Tactile feedback on pickup, slot change, and drop                     |
 
 ## Features
 
@@ -55,12 +64,15 @@ This engine was built to run entirely on the **New Architecture** with the lates
 The engine is split into three layers:
 
 ### 1. Shared State (`DragContext`)
+
 A React context that holds all Reanimated shared values: drag identity, ghost position, drop target tracking, scroll control, and the layout registry. Every component reads from and writes to these values during a drag.
 
 ### 2. Gesture & Hit-Test (`TaskItem`)
+
 Each task item owns a Pan gesture (activated after a 400ms long-press). All gesture callbacks (`onBegin`, `onStart`, `onUpdate`, `onEnd`, `onFinalize`) run as **worklets on the UI thread** for zero-latency tracking. The hit-test function runs every frame during drag — it walks the layout registry, corrects for scroll offset, and determines which list and slot the finger is over.
 
 ### 3. Layout Registry (`TaskItem` + `TaskList`)
+
 Both items and lists register their absolute screen positions into shared value arrays via `scheduleOnUI` + `measure()`. This runs on the UI thread so measurements are always frame-accurate. The registry is the single source of truth for hit-testing.
 
 ### Threading Model
