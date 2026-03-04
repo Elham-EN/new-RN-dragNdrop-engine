@@ -1,6 +1,6 @@
 {
   "name": "@elham-en/drag-n-drop-engine",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "React Native drag-and-drop engine for reordering and moving items across lists. Built on Reanimated 4, Gesture Handler, and react-native-worklets.",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index.js",
@@ -44,7 +44,7 @@
   "author": "Elham Najeebullah",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Elham-EN/drag-n-drop-engine.git"
+    "url": "git+https://github.com/Elham-EN/new-RN-dragNdrop-engine.git"
   },
   "peerDependencies": {
     "expo-haptics": ">=15.0.0",

@@ -28,7 +28,7 @@ A custom-built drag-and-drop engine for reordering and moving items across lists
 
 ## Demo
 
-<img src="https://raw.githubusercontent.com/Elham-EN/drag-n-drop-engine/main/example/assets/preview3.gif" width="300" alt="Drag and drop demo" />
+<img src="https://raw.githubusercontent.com/Elham-EN/new-RN-dragNdrop-engine/main/example/assets/preview3.gif" width="300" alt="Drag and drop demo" />
 
 ## Why Build This?
 
