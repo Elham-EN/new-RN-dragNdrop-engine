@@ -1,0 +1,28 @@
+# Example app — never publish
+example/
+
+# Native project folders
+android/
+ios/
+
+# Expo generated files
+.expo/
+expo-env.d.ts
+
+# Development tooling
+eslint.config.js
+tsconfig.build.json
+scripts/
+
+# Build artifacts
+node_modules/
+*.tsbuildinfo
+
+# Git
+.git/
+.github/
+
+# Misc
+.DS_Store
+*.log
+CLAUDE.md

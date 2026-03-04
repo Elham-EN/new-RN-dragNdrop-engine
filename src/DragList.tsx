@@ -4,7 +4,6 @@
 import { useDragContext } from "./DragContext";
 import { DragItem } from "./types";
 import DragItemComponent from "./DragItemComponent";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import * as React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
@@ -211,7 +210,8 @@ function DragList({
           <Text style={styles.listHeaderContentText}>{tasks.length}</Text>
           {/* Chevron animates rotation to signal expand/collapse state */}
           <Animated.View style={chevronAnimatedStyle}>
-            <Ionicons name={"chevron-forward"} size={24} />
+            {/* Plain text chevron — no external icon library needed */}
+            <Text style={styles.chevron}>{"›"}</Text>
           </Animated.View>
         </View>
       </TouchableOpacity>
@@ -327,6 +327,12 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: "#007AFF",
     borderRadius: 2,
+  },
+  // Plain text chevron replacing the Ionicons dependency
+  chevron: {
+    fontSize: 24,
+    color: "#1C1C1E",
+    lineHeight: 28,
   },
 });
 

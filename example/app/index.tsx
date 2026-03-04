@@ -5,8 +5,8 @@ import {
   DragList,
   DragGhost,
   DragScrollView,
-} from "@/src";
-import { tasks as initialTasks, lists, TaskItem } from "@/data";
+} from "@elham-en/drag-n-drop-engine";
+import { tasks as initialTasks, lists, TaskItem } from "../data";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as React from "react";
 import { StyleSheet, Text, View } from "react-native";

@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { DragItem } from "@/src/types";
+import { DragItem } from "@elham-en/drag-n-drop-engine";
 
 // Re-export DragItem as TaskItem for backward compatibility with the demo app
 export type TaskItem = DragItem;
